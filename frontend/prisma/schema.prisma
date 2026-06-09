@@ -1,0 +1,243 @@
+// Prisma schema for Godwin AI backend foundation
+
+generator client {
+  provider = "prisma-client-js"
+  // Output will be in the generated client directory
+}
+
+datasource db {
+  provider = "postgresql"
+   url      = env("DATABASE_URL")
+}
+
+// Enums
+enum UserRole {
+  USER
+  ADMIN
+  OWNER
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  APPOINTMENT_BOOKED
+  CLOSED
+  LOST
+}
+
+enum CallDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum CallStatus {
+  MISSED
+  ANSWERED
+  VOICEMAIL
+  IN_PROGRESS
+}
+
+
+
+enum SubscriptionPlan {
+  FREE
+  PRO
+  ENTERPRISE
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+// Models
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  name         String?
+  image        String?
+  role         UserRole      @default(USER)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  // Relations
+  memberships  Membership[]
+  agents       AIAgent[]
+  leads        Lead[]
+  conversations Conversation[]
+  messages     Message[]
+}
+
+model Organization {
+  id           String        @id @default(cuid())
+  name         String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  // Relations
+  memberships  Membership[]
+  agents       AIAgent[]
+  leads        Lead[]
+  conversations Conversation[]
+  calls        Call[]
+  appointments Appointment[]
+  workflows    Workflow[]
+  knowledgeBases KnowledgeBase[]
+  subscription Subscription?
+}
+
+model Membership {
+  id             String   @id @default(cuid())
+  userId         String
+  organizationId String?
+  role           UserRole @default(USER)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user           User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+}
+
+model AIAgent {
+  id               String   @id @default(cuid())
+  name             String
+  config           Json?
+  organizationId   String
+  createdById      String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy      User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+}
+
+model Lead {
+  // ... existing fields will follow
+  id               String   @id @default(cuid())
+  organizationId   String?
+  createdById      String?
+  name             String
+  email            String   @unique
+  phone            String?
+  status           LeadStatus @default(NEW)
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdBy      User?         @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  conversations  Conversation[]
+  calls        Call[]
+  appointments Appointment[]
+}
+
+model Conversation {
+  id               String   @id @default(cuid())
+  organizationId   String
+  leadId           String?
+  createdById      String?
+  title            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lead           Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  createdBy      User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  messages       Message[]
+}
+
+model Message {
+  id               String   @id @default(cuid())
+  conversationId   String
+  senderId         String?
+  role             MessageRole @default(USER)
+  content          String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender        User?        @relation(fields: [senderId], references: [id], onDelete: SetNull)
+}
+
+model Call {
+  id               String   @id @default(cuid())
+  organizationId   String
+  leadId           String?
+  phoneNumber      String?
+  customerName     String?
+  direction        CallDirection
+  status           CallStatus @default(IN_PROGRESS)
+  duration         Int?
+  transcript       String?
+  recordingUrl     String?
+  startedAt        DateTime?
+  endedAt          DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lead           Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
+}
+
+model Appointment {
+  id               String   @id @default(cuid())
+  organizationId   String?
+  leadId           String?
+  scheduledAt      DateTime
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  lead           Lead?        @relation(fields: [leadId], references: [id], onDelete: SetNull)
+}
+
+model Workflow {
+  id               String   @id @default(cuid())
+  organizationId   String
+  name             String
+  description      String?
+  steps            Json
+  active           Boolean @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model KnowledgeBase {
+  id               String   @id @default(cuid())
+  organizationId   String
+  name             String
+  description      String?
+  documents        Json
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+model Subscription {
+  id                String   @id @default(cuid())
+  organizationId    String   @unique
+  plan              SubscriptionPlan @default(FREE)
+  status            SubscriptionStatus @default(ACTIVE)
+  stripeCustomerId  String?
+  currentPeriodEnd  DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+}
+
+
