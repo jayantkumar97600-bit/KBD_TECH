@@ -12,7 +12,7 @@ const AiAgentSchema = new Schema<AiAgent>(
   {
     tenantId: { type: String, required: true, index: true },
     name: { type: String, required: true },
-    model: { type: String, required: true },
+    providerModel: { type: String, required: true },
     config: { type: Schema.Types.Mixed, default: {} },
     deletedAt: { type: Date },
   },
