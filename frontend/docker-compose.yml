@@ -27,6 +27,8 @@ services:
       - ./../backend/.env
     environment:
       - MONGODB_URI=mongodb://mongo:27017/ai-receptionist
+      - RTP_HOST=backend
+      - RTP_PORT=5004
     depends_on:
       mongo:
         condition: service_started
@@ -34,6 +36,8 @@ services:
         condition: service_healthy
     ports:
       - "4000:4000"
+      - "5004:5004/udp"
+
     healthcheck:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:4000/health || exit 1"]
       interval: 30s
@@ -92,8 +96,7 @@ services:
     ports:
       - "5070:5070/udp"
       - "5061:5061/tcp"
-      - "5004:5004/udp"
-      - "10000-10100:10000-10100/udp"
+      - "20000-20100:20000-20100/udp"
       - "8088:8088"
     healthcheck:
       test: ["CMD", "true"]

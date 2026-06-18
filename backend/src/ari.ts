@@ -5,10 +5,13 @@ const ARI_URL = "http://asterisk:8088";
 const ARI_USER = "admin";
 const ARI_PASS = "admin123";
 
+const RTP_HOST = process.env.RTP_HOST || "backend";
 const RTP_PORT = Number(process.env.RTP_PORT) || 5004;
 
 async function startAri() {
+
   try {
+
     const client = await ari.connect(
       ARI_URL,
       ARI_USER,
@@ -17,76 +20,153 @@ async function startAri() {
 
     console.log("✅ Connected to ARI");
 
-    client.on("StasisStart", async (_event: any, channel: any) => {
-
-      console.log("📞 Incoming Call:", channel.name);
-
-      // Prevent infinite recursion from ExternalMedia channels
-      if (
-        channel.name &&
-        channel.name.startsWith("UnicastRTP")
-      ) {
-        console.log("⏭️ Ignoring RTP helper channel");
-        return;
-      }
-
-      try {
-        // Answer caller
-        await channel.answer();
-
-        console.log("✅ Call answered");
-
-        // Create ExternalMedia RTP channel
-        const external = await client.channels.externalMedia({
-          app: "ai-assistant",
-          external_host: "172.18.0.4:5004",
-          format: "ulaw",
-        });
+    client.on(
+      "StasisStart",
+      async (_event: any, channel: any) => {
 
         console.log(
-          "🟢 ExternalMedia channel created:",
-          external.id
+          "📞 Incoming Call:",
+          channel.name
         );
 
-        // Create bridge
-        const bridge = await client.bridges.create({
-          type: "mixing",
-        });
+        // Ignore helper RTP channels
+        if (
+          channel.name &&
+          channel.name.startsWith("UnicastRTP")
+        ) {
+          console.log(
+            "⏭️ Ignoring RTP helper channel"
+          );
+          return;
+        }
 
-        console.log("🔀 Bridge created:", bridge.id);
+        try {
 
-        // Add real caller
-        await bridge.addChannel({
-          channel: channel.id,
-        });
+          // ANSWER CALL
+          await channel.answer();
 
-        // Add RTP external media channel
-        await bridge.addChannel({
-          channel: external.id,
-        });
+          console.log("✅ Call answered");
 
-        console.log("🔗 Channels added to bridge");
-        channel.on("StasisEnd", () => {
-          console.log("📴 Call ended");
-        });
+          // CREATE EXTERNAL MEDIA CHANNEL
+          const external =
+            await client.channels.externalMedia({
+              app: "ai-assistant",
+              external_host: `${RTP_HOST}:${RTP_PORT}`,
+              format: "ulaw",
+              direction: "both",
+            });
 
-        console.log("🎙️ Waiting for RTP audio...");
-      } catch (err) {
-        console.error("🚨 Call handling error:", err);
+          console.log(
+            "🟢 ExternalMedia channel created:",
+            external.id
+          );
+
+          // CREATE BRIDGE
+          const bridge =
+            await client.bridges.create({
+              type:
+                "mixing,proxy_media,dtmf_events",
+            });
+
+          console.log(
+            "🔀 Bridge created:",
+            bridge.id
+          );
+
+          // ADD REAL CALLER
+          await bridge.addChannel({
+            channel: channel.id,
+          });
+
+          // ADD EXTERNAL MEDIA CHANNEL
+          await bridge.addChannel({
+            channel: external.id,
+          });
+
+          console.log(
+            "🔗 Channels added to bridge"
+          );
+
+          // DEBUG BRIDGE
+          const bridgeInfo =
+            await client.bridges.get({
+              bridgeId: bridge.id,
+            });
+
+          console.log(
+            "📡 Active bridge channels:",
+            bridgeInfo.channels
+          );
+
+          // KEEP REFERENCES
+          (channel as any)._bridge = bridge;
+          (channel as any)._external = external;
+
+          channel.on(
+            "StasisEnd",
+            async () => {
+
+              console.log("📴 Call ended");
+
+              try {
+
+                await bridge.destroy();
+
+              } catch {}
+
+              try {
+
+                await external.hangup();
+
+              } catch {}
+
+            }
+          );
+
+          console.log(
+            "🎙️ Waiting for RTP audio..."
+          );
+
+          // KEEP SESSION ALIVE
+          await new Promise(() => {});
+
+        } catch (err) {
+
+          console.error(
+            "🚨 Call handling error:",
+            err
+          );
+
+        }
+
       }
-    });
-    client.on("ChannelDestroyed", (event: any) => {
-      console.log("💥 Channel destroyed:", event.channel?.name);
-    });
+    );
 
-    // Start ARI app
+    client.on(
+      "ChannelDestroyed",
+      (event: any) => {
+
+        console.log(
+          "💥 Channel destroyed:",
+          event.channel?.name
+        );
+
+      }
+    );
+
     client.start("ai-assistant");
 
     console.log("🚀 ARI app started");
 
   } catch (err) {
-    console.error("❌ ARI connection failed:", err);
+
+    console.error(
+      "❌ ARI connection failed:",
+      err
+    );
+
   }
+
 }
 
 startAri();
